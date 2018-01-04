@@ -7,30 +7,30 @@ from rv.detection.commands.make_predict_chips import _make_predict_chips
 from rv.detection.commands.predict_on_chips import _predict_on_chips
 from rv.detection.commands.aggregate_predictions import _aggregate_predictions
 from rv.detection.commands.transform_geojson import _transform_geojson
-from rv.detection.commands.settings import planet_channel_order, temp_root_dir
-from rv.utils import (
-    download_if_needed, upload_if_needed, get_local_path, make_empty_dir,
-    download_and_build_vrt)
+from rv.detection.commands.settings import temp_root_dir, default_channel_order
+from rv.utils.files import (
+    download_if_needed, upload_if_needed, get_local_path, make_dir)
+from rv.utils.geo import download_and_build_vrt
 
 
 def _predict(inference_graph_uri, label_map_uri, image_uris,
              agg_predictions_uri, agg_predictions_debug_uri=None,
-             mask_uri=None, channel_order=planet_channel_order, chip_size=300,
+             mask_uri=None, channel_order=default_channel_order, chip_size=300,
              score_thresh=0.5, merge_thresh=0.05):
     temp_dir = join(temp_root_dir, 'predict')
-    make_empty_dir(temp_dir)
+    make_dir(temp_dir, force_empty=True)
 
     # Download input files if needed.
-    inference_graph_path = download_if_needed(temp_dir, inference_graph_uri)
-    label_map_path = download_if_needed(temp_dir, label_map_uri)
-    mask_path = download_if_needed(temp_dir, mask_uri)
-    image_path = download_and_build_vrt(temp_dir, image_uris)
+    inference_graph_path = download_if_needed(inference_graph_uri, temp_dir)
+    label_map_path = download_if_needed(label_map_uri, temp_dir)
+    mask_path = download_if_needed(mask_uri, temp_dir)
+    image_path = download_and_build_vrt(image_uris, temp_dir)
 
     # Output files can't be downloaded since they don't exist yet, but
     # we need to figure out where to store them locally if the URI is remote.
-    agg_predictions_path = get_local_path(temp_dir, agg_predictions_uri)
+    agg_predictions_path = get_local_path(agg_predictions_uri, temp_dir)
     agg_predictions_debug_path = get_local_path(
-        temp_dir, agg_predictions_debug_uri)
+        agg_predictions_debug_uri, temp_dir)
 
     # Divide VRT into overlapping chips.
     chips_dir = join(temp_dir, 'chips')
@@ -76,7 +76,7 @@ def _predict(inference_graph_uri, label_map_uri, image_uris,
 @click.option('--mask-uri', default=None,
               help='URI for mask GeoJSON file to use as filter for detections')
 @click.option('--channel-order', nargs=3, type=int,
-              default=planet_channel_order, help='Index of RGB channels')
+              default=default_channel_order, help='Index of RGB channels')
 @click.option('--chip-size', default=300)
 @click.option('--score-thresh', default=0.5,
               help='Score threshold of predictions to keep')

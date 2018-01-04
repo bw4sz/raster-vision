@@ -1,5 +1,5 @@
 from os.path import join, dirname, splitext
-from os import makedirs
+import os
 from subprocess import Popen
 import zipfile
 from threading import Timer
@@ -7,8 +7,9 @@ from urllib.parse import urlparse
 
 import click
 
-from rv.utils import (
-    download_if_needed, make_empty_dir, on_parent_exit, sync_dir)
+from rv.utils.files import (
+    download_if_needed, make_dir, sync_dir, get_local_path)
+from rv.utils.misc import on_parent_exit
 from rv.detection.commands.settings import temp_root_dir
 
 
@@ -31,31 +32,32 @@ def train(config_uri, train_dataset_uri, val_dataset_uri, model_checkpoint_uri,
         train_uri: Directory for output of training
     """
     temp_dir = join(temp_root_dir, 'train')
-    download_dir = '/opt/data/'
-    make_empty_dir(temp_dir)
+    make_dir(temp_dir, force_empty=True)
 
-    config_path = download_if_needed(temp_dir, config_uri)
+    config_path = download_if_needed(config_uri, temp_dir)
 
-    train_root_dir = download_if_needed(
-        temp_dir, train_uri, must_exist=False)
+    train_root_dir = get_local_path(train_uri, temp_dir)
+    make_dir(train_root_dir)
     train_dir = join(train_root_dir, 'train')
     eval_dir = join(train_root_dir, 'eval')
-    makedirs(train_root_dir, exist_ok=True)
 
-    train_dataset_path = download_if_needed(download_dir, train_dataset_uri)
-    with zipfile.ZipFile(train_dataset_path, 'r') as train_dataset_file:
-        train_dataset_dir = splitext(train_dataset_path)[0]
-        train_dataset_file.extractall(train_dataset_dir)
+    def process_zip_file(uri, temp_dir, link_dir):
+        if uri.endswith('.zip'):
+            path = download_if_needed(uri, temp_dir)
+            with zipfile.ZipFile(path, 'r') as zip_file:
+                zip_file.extractall(link_dir)
+        else:
+            make_dir(link_dir, use_dirname=True)
+            os.symlink(uri, link_dir)
 
-    val_dataset_path = download_if_needed(download_dir, val_dataset_uri)
-    with zipfile.ZipFile(val_dataset_path, 'r') as val_dataset_file:
-        val_dataset_dir = splitext(val_dataset_path)[0]
-        val_dataset_file.extractall(val_dataset_dir)
+    train_dataset_dir = join(temp_dir, 'train-dataset')
+    process_zip_file(train_dataset_uri, temp_dir, train_dataset_dir)
 
-    model_checkpoint_path = download_if_needed(
-        download_dir, model_checkpoint_uri)
-    with zipfile.ZipFile(model_checkpoint_path, 'r') as model_checkpoint_file:
-        model_checkpoint_file.extractall(dirname(model_checkpoint_path))
+    val_dataset_dir = join(temp_dir, 'val-dataset')
+    process_zip_file(val_dataset_uri, temp_dir, val_dataset_dir)
+
+    model_checkpoint_dir = join(temp_dir, 'model-checkpoint')
+    process_zip_file(model_checkpoint_uri, temp_dir, model_checkpoint_dir)
 
     def sync_train_dir(delete=True):
         sync_dir(train_root_dir, train_uri, delete=delete)

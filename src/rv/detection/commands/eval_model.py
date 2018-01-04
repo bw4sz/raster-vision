@@ -1,15 +1,14 @@
-from os.path import join, dirname
-from os import makedirs
+from os.path import join, isfile
 import json
 
 import click
 
 from rv.detection.commands.predict import _predict
 from rv.detection.commands.eval_predictions import _eval_predictions
-from rv.utils import (
-    download_if_needed, get_local_path, upload_if_needed, load_projects,
-    make_empty_dir)
-from rv.detection.commands.settings import planet_channel_order, temp_root_dir
+from rv.utils.files import (
+    download_if_needed, get_local_path, upload_if_needed, make_dir)
+from rv.utils.misc import load_projects
+from rv.detection.commands.settings import default_channel_order, temp_root_dir
 
 
 def save_eval_avgs(eval_paths, output_path):
@@ -38,12 +37,12 @@ def save_eval_avgs(eval_paths, output_path):
 @click.argument('projects_uri')
 @click.argument('label_map_uri')
 @click.argument('output_uri')
-@click.option('--use-cached-predictions', default=False,
-              help='Use predictions that were already made in previous run')
+@click.option('--use-cached-predictions', is_flag=True,
+              default=False)
 @click.option('--evals-uri', default=None)
 @click.option('--predictions-uri', default=None)
 @click.option('--channel-order', nargs=3, type=int,
-              default=planet_channel_order, help='Index of RGB channels')
+              default=default_channel_order, help='Index of RGB channels')
 @click.option('--chip-size', default=300)
 @click.option('--score-thresh', default=0.5,
               help='Score threshold of predictions to keep')
@@ -65,34 +64,40 @@ def eval_model(inference_graph_uri, projects_uri, label_map_uri, output_uri,
         label_map_uri: label map for the model
         output_uri: the destination for the JSON output
     """
-    temp_dir = join(temp_root_dir, 'eval_projects')
-    make_empty_dir(temp_dir)
+    temp_dir = join(temp_root_dir, 'eval-model')
+    make_dir(temp_dir, force_empty=True)
 
     if predictions_uri is None:
         predictions_uri = join(temp_dir, 'predictions')
-    predictions_dir = get_local_path(temp_dir, predictions_uri)
-    make_empty_dir(predictions_dir)
+    # TODO sync predictions uri with predictions dir
+    predictions_dir = get_local_path(predictions_uri, temp_dir)
+    make_dir(predictions_dir, check_empty=(not use_cached_predictions))
 
     if evals_uri is None:
         evals_uri = join(temp_dir, 'evals')
-    evals_dir = get_local_path(temp_dir, evals_uri)
-    make_empty_dir(evals_dir)
+    evals_dir = get_local_path(evals_uri, temp_dir)
+    make_dir(evals_dir, check_empty=True)
 
-    projects_path = download_if_needed(temp_dir, projects_uri)
+    projects_path = download_if_needed(projects_uri, temp_dir)
     project_ids, image_paths_list, annotations_paths = \
-        load_projects(temp_dir, projects_path)
+        load_projects(projects_path, temp_dir)
 
-    output_path = get_local_path(temp_dir, output_uri)
-    output_dir = dirname(output_path)
-    makedirs(output_dir, exist_ok=True)
+    output_path = get_local_path(output_uri, temp_dir)
+    make_dir(output_path, use_dirname=True)
 
     # Run prediction and evaluation on each project.
     eval_paths = []
     for project_id, image_paths, annotations_path in \
             zip(project_ids, image_paths_list, annotations_paths):
         predictions_path = join(predictions_dir, '{}.json'.format(project_id))
-        print('Making predictions and storing in {}'.format(predictions_path))
-        if not use_cached_predictions:
+        if use_cached_predictions:
+            if not isfile(predictions_path):
+                raise ValueError(
+                    '--use_cached_predictions is set but {} is missing'.format(
+                        predictions_path))
+        else:
+            print('Making predictions and storing in {}'.format(
+                predictions_path))
             _predict(inference_graph_uri, label_map_uri, image_paths,
                      predictions_path, channel_order=channel_order,
                      chip_size=chip_size, score_thresh=score_thresh,
