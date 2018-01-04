@@ -57,7 +57,7 @@ def download_if_needed(uri, download_dir, must_exist=True):
         return None
 
     path = get_local_path(uri, download_dir)
-    make_dir(os.path.dirname(path), use_dirname=True)
+    make_dir(path, use_dirname=True)
 
     parsed_uri = urlparse(uri)
     if parsed_uri.scheme == 's3':
