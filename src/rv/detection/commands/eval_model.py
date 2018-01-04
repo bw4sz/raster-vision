@@ -5,31 +5,11 @@ import click
 
 from rv.detection.commands.predict import _predict
 from rv.detection.commands.eval_predictions import _eval_predictions
+from rv.detection.commands.aggregate_evals import _aggregate_evals
 from rv.utils.files import (
     download_if_needed, get_local_path, upload_if_needed, make_dir)
 from rv.utils.misc import load_projects
 from rv.detection.commands.settings import default_channel_order, temp_root_dir
-
-
-def save_eval_avgs(eval_paths, output_path):
-    label_to_avgs = {}
-    nb_projects = len(eval_paths)
-    for eval_path in eval_paths:
-        with open(eval_path, 'r') as eval_file:
-            project_eval = json.load(eval_file)
-            for label_eval in project_eval:
-                label_name = label_eval['name']
-                label_avgs = label_to_avgs.get(label_name, {})
-                for key, val in label_eval.items():
-                    if key == 'name':
-                        label_avgs['name'] = label_name
-                    else:
-                        label_avgs[key] = \
-                            label_avgs.get(key, 0) + (val / nb_projects)
-                label_to_avgs[label_name] = label_avgs
-
-    with open(output_path, 'w') as output_file:
-        json.dump(list(label_to_avgs.values()), output_file, indent=4)
 
 
 @click.command()
@@ -108,7 +88,7 @@ def eval_model(inference_graph_uri, projects_uri, label_map_uri, output_uri,
             image_paths, label_map_uri, annotations_path, predictions_path,
             eval_path)
 
-    save_eval_avgs(eval_paths, output_path)
+    _aggregate_evals(eval_paths, output_path)
     upload_if_needed(output_path, output_uri)
     upload_if_needed(predictions_dir, predictions_uri)
     upload_if_needed(evals_dir, evals_uri)
